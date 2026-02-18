@@ -1,3 +1,11 @@
+#!/bin/bash
+
+echo "🔄 Fixing database schema..."
+
+# First, delete the old database to start fresh
+rm -f local.db
+
+cat > lib/db.ts << 'EOF'
 import Database from 'better-sqlite3'
 
 const db = new Database('local.db')
@@ -71,3 +79,7 @@ if (watchCount.count === 0) {
 }
 
 export { sql, db }
+EOF
+
+echo "✅ Fixed database schema! Removed sellers table reference."
+echo "🚀 Restart your dev server: npm run dev"

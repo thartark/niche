@@ -1,83 +1,91 @@
 import { cookies } from "next/headers"
-import { neon } from "@neondatabase/serverless"
 import bcrypt from "bcryptjs"
+import Database from 'better-sqlite3'
+import { jwtVerify, SignJWT } from 'jose'
 
-const sql = neon(process.env.DATABASE_URL!)
+const sql = new Database('local.db')
+const JWT_SECRET = new TextEncoder().encode(
+  process.env.JWT_SECRET || 'your-secret-key-change-this-in-production'
+)
 
-export interface User {
-  id: number
-  email: string
-  name: string
-  avatar_url: string | null
-}
-
-export async function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, 10)
-}
-
-export async function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash)
-}
+// Initialize users table if it doesn't exist
+sql.exec(`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`)
 
 export async function createUser(email: string, password: string, name: string) {
-  const passwordHash = await hashPassword(password)
-
-  const result = await sql`
-    INSERT INTO users (email, password_hash, name)
-    VALUES (${email}, ${passwordHash}, ${name})
-    RETURNING id, email, name, avatar_url
-  `
-
-  return result[0] as User
+  const hashedPassword = await bcrypt.hash(password, 10)
+  
+  const stmt = sql.prepare(`
+    INSERT INTO users (email, password, name)
+    VALUES (?, ?, ?)
+    RETURNING id, email, name
+  `)
+  
+  return stmt.get(email, hashedPassword, name)
 }
 
-export async function authenticateUser(email: string, password: string): Promise<User | null> {
-  const result = await sql`
-    SELECT id, email, password_hash, name, avatar_url
-    FROM users
-    WHERE email = ${email}
-  `
-
-  if (result.length === 0) return null
-
-  const user = result[0]
-  const isValid = await verifyPassword(password, user.password_hash)
-
+export async function verifyUser(email: string, password: string) {
+  const stmt = sql.prepare('SELECT * FROM users WHERE email = ?')
+  const user = stmt.get(email)
+  
+  if (!user) return null
+  
+  const isValid = await bcrypt.compare(password, user.password)
   if (!isValid) return null
-
-  return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    avatar_url: user.avatar_url,
-  }
+  
+  const { password: _, ...userWithoutPassword } = user
+  return userWithoutPassword
 }
 
-export async function setUserSession(user: User) {
-  const cookieStore = await cookies()
-  // In production, use proper session tokens stored in database
-  cookieStore.set("user_session", JSON.stringify(user), {
+export async function getUserById(id: number) {
+  const stmt = sql.prepare('SELECT id, email, name, created_at FROM users WHERE id = ?')
+  return stmt.get(id)
+}
+
+// Add these new functions for session handling
+export async function createSession(userId: number) {
+  const token = await new SignJWT({ userId })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setExpirationTime('7d')
+    .sign(JWT_SECRET)
+  
+  cookies().set('session', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 7 // 7 days
   })
+  
+  return token
 }
 
-export async function getUserSession(): Promise<User | null> {
-  const cookieStore = await cookies()
-  const session = cookieStore.get("user_session")
-
-  if (!session) return null
-
+export async function getSession() {
+  const token = cookies().get('session')?.value
+  
+  if (!token) return null
+  
   try {
-    return JSON.parse(session.value)
+    const { payload } = await jwtVerify(token, JWT_SECRET)
+    return payload
   } catch {
     return null
   }
 }
 
-export async function clearUserSession() {
-  const cookieStore = await cookies()
-  cookieStore.delete("user_session")
+export async function getUserSession() {
+  const session = await getSession()
+  if (!session?.userId) return null
+  
+  return getUserById(Number(session.userId))
+}
+
+export async function logout() {
+  cookies().delete('session')
 }

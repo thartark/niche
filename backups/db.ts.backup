@@ -1,0 +1,73 @@
+import Database from 'better-sqlite3'
+
+const db = new Database('local.db')
+
+// Helper function to make SQLite work with template tags like Neon
+function sql(strings: TemplateStringsArray, ...values: any[]) {
+  const query = strings.reduce((acc, str, i) => {
+    return acc + str + (values[i] !== undefined ? '?' : '')
+  }, '')
+  
+  const stmt = db.prepare(query)
+  
+  // Return different methods based on query type
+  return {
+    all: () => stmt.all(...values),
+    get: () => stmt.get(...values),
+    run: () => stmt.run(...values),
+    then: (resolve: any) => resolve(stmt.all(...values)) // For promise compatibility
+  }
+}
+
+// Initialize tables
+sql`
+  CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )
+`.run()
+
+sql`
+  CREATE TABLE IF NOT EXISTS watches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    brand TEXT NOT NULL,
+    model TEXT NOT NULL,
+    price REAL NOT NULL,
+    condition TEXT NOT NULL,
+    image_url TEXT,
+    seller_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (seller_id) REFERENCES users(id)
+  )
+`.run()
+
+// Add a demo user first
+const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get()
+if (userCount.count === 0) {
+  const insertUser = db.prepare(`
+    INSERT INTO users (name, email, password)
+    VALUES (?, ?, ?)
+  `)
+  insertUser.run('Demo Seller', 'demo@example.com', '$2b$10$demo.hashed.password')
+}
+
+// Add sample watches if table is empty
+const watchCount = db.prepare('SELECT COUNT(*) as count FROM watches').get()
+if (watchCount.count === 0) {
+  // Get the demo user id
+  const demoUser = db.prepare('SELECT id FROM users WHERE email = ?').get('demo@example.com')
+  
+  const insertWatch = db.prepare(`
+    INSERT INTO watches (brand, model, price, condition, image_url, seller_id)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `)
+  
+  insertWatch.run('Rolex', 'Submariner', 8500, 'Excellent', 'https://images.unsplash.com/photo-1547996160-81dfa63595aa?w=800', demoUser.id)
+  insertWatch.run('Omega', 'Speedmaster', 5200, 'Very Good', 'https://images.unsplash.com/photo-1614164185128-5cbdaf202e2a?w=800', demoUser.id)
+  insertWatch.run('Tag Heuer', 'Carrera', 3800, 'Good', 'https://images.unsplash.com/photo-1619810237008-ec82ebcfbc2d?w=800', demoUser.id)
+}
+
+export { sql, db }

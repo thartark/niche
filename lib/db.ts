@@ -1,73 +1,230 @@
-import Database from 'better-sqlite3'
+// Mock database adapter that returns mock data instead of querying SQLite
 
-const db = new Database('local.db')
+export interface Watch {
+  id: number;
+  seller_id: number;
+  brand: string;
+  model: string;
+  reference_number: string;
+  price: number;
+  condition: string;
+  year: number;
+  description: string;
+  images: string[];
+  status: string;
+  created_at: string;
+}
 
-// Helper function to make SQLite work with template tags like Neon
-function sql(strings: TemplateStringsArray, ...values: any[]) {
-  const query = strings.reduce((acc, str, i) => {
-    return acc + str + (values[i] !== undefined ? '?' : '')
-  }, '')
-  
-  const stmt = db.prepare(query)
-  
-  // Return different methods based on query type
-  return {
-    all: () => stmt.all(...values),
-    get: () => stmt.get(...values),
-    run: () => stmt.run(...values),
-    then: (resolve: any) => resolve(stmt.all(...values)) // For promise compatibility
+export interface Seller {
+  id: number;
+  name: string;
+  email: string;
+  rating: number;
+  total_sales: number;
+  created_at: string;
+}
+
+// Mock data
+const mockSellers: Seller[] = [
+  {
+    id: 1,
+    name: "Timepiece Gallery",
+    email: "contact@timepiece.com",
+    rating: 4.8,
+    total_sales: 125,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 2,
+    name: "Luxury Watches NYC",
+    email: "info@luxurywatchesnyc.com",
+    rating: 4.9,
+    total_sales: 342,
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 3,
+    name: "Vintage Watch Co",
+    email: "sales@vintagewatchco.com",
+    rating: 4.7,
+    total_sales: 89,
+    created_at: new Date().toISOString()
   }
-}
+];
 
-// Initialize tables
-sql`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  )
-`.run()
+const mockWatches: Watch[] = [
+  {
+    id: 1,
+    seller_id: 1,
+    brand: "Rolex",
+    model: "Submariner",
+    reference_number: "116610LN",
+    price: 12500,
+    condition: "Excellent",
+    year: 2020,
+    description: "Black ceramic bezel, stainless steel, excellent condition with box and papers",
+    images: ["/watch1.jpg"],
+    status: "available",
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 2,
+    seller_id: 2,
+    brand: "Omega",
+    model: "Speedmaster Professional",
+    reference_number: "311.30.42.30.01.005",
+    price: 6500,
+    condition: "Very Good",
+    year: 2021,
+    description: "Moonwatch, hesalite crystal, stainless steel bracelet",
+    images: ["/watch2.jpg"],
+    status: "available",
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 3,
+    seller_id: 3,
+    brand: "Patek Philippe",
+    model: "Nautilus",
+    reference_number: "5711/1A-010",
+    price: 85000,
+    condition: "New",
+    year: 2022,
+    description: "Blue dial, stainless steel, unworn with full set",
+    images: ["/watch3.jpg"],
+    status: "sold",
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 4,
+    seller_id: 1,
+    brand: "Audemars Piguet",
+    model: "Royal Oak",
+    reference_number: "15500ST.OO.1220ST.01",
+    price: 32000,
+    condition: "Like New",
+    year: 2021,
+    description: "Blue dial, stainless steel, 41mm, with box and papers",
+    images: ["/watch4.jpg"],
+    status: "available",
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 5,
+    seller_id: 2,
+    brand: "TAG Heuer",
+    model: "Carrera",
+    reference_number: "CBN2A1A.BA0643",
+    price: 5500,
+    condition: "Excellent",
+    year: 2022,
+    description: "Green dial, stainless steel, 42mm, chronograph",
+    images: ["/watch5.jpg"],
+    status: "available",
+    created_at: new Date().toISOString()
+  },
+  {
+    id: 6,
+    seller_id: 3,
+    brand: "IWC",
+    model: "Portuguese Chronograph",
+    reference_number: "IW371605",
+    price: 7800,
+    condition: "Good",
+    year: 2019,
+    description: "Blue dial, stainless steel, 41mm, with leather strap",
+    images: ["/watch6.jpg"],
+    status: "available",
+    created_at: new Date().toISOString()
+  }
+];
 
-sql`
-  CREATE TABLE IF NOT EXISTS watches (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    brand TEXT NOT NULL,
-    model TEXT NOT NULL,
-    price REAL NOT NULL,
-    condition TEXT NOT NULL,
-    image_url TEXT,
-    seller_id INTEGER,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (seller_id) REFERENCES users(id)
-  )
-`.run()
-
-// Add a demo user first
-const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get()
-if (userCount.count === 0) {
-  const insertUser = db.prepare(`
-    INSERT INTO users (name, email, password)
-    VALUES (?, ?, ?)
-  `)
-  insertUser.run('Demo Seller', 'demo@example.com', '$2b$10$demo.hashed.password')
-}
-
-// Add sample watches if table is empty
-const watchCount = db.prepare('SELECT COUNT(*) as count FROM watches').get()
-if (watchCount.count === 0) {
-  // Get the demo user id
-  const demoUser = db.prepare('SELECT id FROM users WHERE email = ?').get('demo@example.com')
+// Database adapter that returns mock data instead of querying real DB
+export function sql(query: string, ...args: any[]) {
+  // Parse the query to determine what to return
+  const queryLower = query.toLowerCase();
   
-  const insertWatch = db.prepare(`
-    INSERT INTO watches (brand, model, price, condition, image_url, seller_id)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `)
-  
-  insertWatch.run('Rolex', 'Submariner', 8500, 'Excellent', 'https://images.unsplash.com/photo-1547996160-81dfa63595aa?w=800', demoUser.id)
-  insertWatch.run('Omega', 'Speedmaster', 5200, 'Very Good', 'https://images.unsplash.com/photo-1614164185128-5cbdaf202e2a?w=800', demoUser.id)
-  insertWatch.run('Tag Heuer', 'Carrera', 3800, 'Good', 'https://images.unsplash.com/photo-1619810237008-ec82ebcfbc2d?w=800', demoUser.id)
+  // Return different mock data based on query type
+  return {
+    // For SELECT queries
+    all: () => {
+      if (queryLower.includes('from sellers')) {
+        return mockSellers;
+      }
+      if (queryLower.includes('from watches')) {
+        // Handle different WHERE clauses
+        if (queryLower.includes('where status')) {
+          return mockWatches.filter(w => w.status === 'available');
+        }
+        if (queryLower.includes('order by created_at desc limit')) {
+          // Get featured watches (latest 3)
+          return [...mockWatches]
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .slice(0, 3);
+        }
+        return mockWatches;
+      }
+      return [];
+    },
+    
+    // For single row queries
+    get: () => {
+      if (queryLower.includes('from sellers where id =')) {
+        const id = args[0];
+        return mockSellers.find(s => s.id === id) || null;
+      }
+      if (queryLower.includes('from watches where id =')) {
+        const id = args[0];
+        return mockWatches.find(w => w.id === id) || null;
+      }
+      return null;
+    },
+    
+    // For INSERT/UPDATE/DELETE queries
+    run: () => {
+      return { changes: 1, lastInsertRowid: mockWatches.length + 1 };
+    }
+  };
 }
 
-export { sql, db }
+// Export individual functions for common queries
+export const db = {
+  getFeaturedWatches: () => {
+    return mockWatches
+      .filter(w => w.status === 'available')
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 3);
+  },
+  
+  getWatchById: (id: number) => {
+    return mockWatches.find(w => w.id === id) || null;
+  },
+  
+  getWatchesBySeller: (sellerId: number) => {
+    return mockWatches.filter(w => w.seller_id === sellerId);
+  },
+  
+  getSellerById: (id: number) => {
+    return mockSellers.find(s => s.id === id) || null;
+  },
+  
+  getAllWatches: (filters?: any) => {
+    let result = [...mockWatches];
+    
+    if (filters?.status) {
+      result = result.filter(w => w.status === filters.status);
+    }
+    
+    if (filters?.brand) {
+      result = result.filter(w => w.brand === filters.brand);
+    }
+    
+    if (filters?.maxPrice) {
+      result = result.filter(w => w.price <= filters.maxPrice);
+    }
+    
+    return result;
+  }
+};
+
+export default db;
